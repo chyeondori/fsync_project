@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.sync.mapper.FileSyncMapper">
+
+   <!-- <select id="selectTopDir" resultType="fsync.business.sync.vo.TopDirInfoVO">
+        /* fileSync-SQL.selectTopDir */
+        SELECT SYNC_ID, SRC_TOP_DIR, DST_TOP_DIR
+        FROM TB_TOP_DIR_INFO
+        WHERE 1 = 1
+    </select>-->
+
+    <select id="selectTopDir" resultType="fsync.business.sync.vo.TopDirInfoVO">
+        /* fileSync-SQL.selectTopDir */
+        SELECT SYNC_ID, SRC_TOP_DIR, SRC_TOT_FILE_CNT, SRC_TOT_FILE_SIZE, DST_TOP_DIR, DST_TOT_FILE_CNT,
+               DST_TOT_FILE_SIZE, LOG_DIR, PROC_STAT, REG_DTM, REMARK, PROC_DTM
+        FROM TB_TOP_DIR_INFO
+        WHERE 1 = 1
+    </select>
+
+    <select id="selectDirTreeInfo" parameterType="fsync.business.sync.vo.DirTreeInfoVO"
+            resultType="fsync.business.sync.vo.DirTreeInfoVO">
+        /* fileSync-SQL.selectDirTreeInfo */
+        SELECT DIR_ID, P_DIR_ID, C_DIR_NM, SRC_F_DIR_NM
+        FROM TB_DIR_INFO
+        WHERE 1 = 1
+          AND SYNC_ID = #{syncId}
+        ORDER BY P_DIR_ID
+    </select>
+
+    <select id="selectAllFiles" parameterType="map" resultType="fsync.business.sync.vo.AllFileListVO">
+        /* fileSync-SQL.selectAllFiles */
+        SELECT DIR_ID AS 'EX_ID'
+					,C_DIR_NM AS 'EX_NAME'
+					,SRC_F_DIR_NM AS 'EX_SRC_F_NAME'
+					,DST_F_DIR_NM AS 'EX_DST_F_NAME'
+					,'-' AS 'EX_DTM'
+					,'d' AS 'TYPE_CD'
+					,'디렉토리' AS 'EX_TYPE'
+					,TOT_FILE_SIZE AS 'EX_SIZE'
+					,TOT_FILE_CNT AS 'EX_CNT'
+					,D.CD_NM AS 'EX_PROC_STAT'
+					,PROC_STAT
+             ,REPLACE(SRC_F_DIR_NM, C_DIR_NM, "") AS 'EX_DIR_NM'
+        FROM TB_DIR_INFO
+           , (SELECT CD, CD_NM
+              FROM TB_CMMN_CD
+              WHERE
+                  GROUP_CD = 1
+        ) D
+        WHERE 1 = 1
+          AND P_DIR_ID = #{dirId}
+          AND D.CD = PROC_STAT
+        UNION ALL
+        SELECT A.FILE_ID AS 'EX_ID'
+		,A.FILE_NM AS 'EX_NAME'
+		,A.SRC_DIR_NM AS 'EX_SRC_F_NAME'
+		,A.DST_DIR_NM AS 'EX_DST_F_NAME'
+		,A.FILE_DTM AS 'EX_DTM'
+		,'f' AS 'TYPE_CD'
+		,C.CD_NM AS 'EX_TYPE'
+		,A.FILE_SIZE AS 'EX_SIZE'
+		,'-' AS 'EX_CNT'
+		,B.CD_NM AS 'EX_PROC_STAT'
+		,A.PROC_STAT
+        ,REPLACE(A.SRC_F_PATH_NM, FILE_NM, "") AS 'F_DIR_NM'
+        FROM TB_FILE_INFO A
+           , (SELECT CD, CD_NM
+              FROM TB_CMMN_CD
+              WHERE
+                  GROUP_CD = 1
+        ) B
+           , (SELECT CD, CD_NM
+              FROM TB_CMMN_CD
+               WHERE GROUP_CD = 5
+        ) C
+        WHERE 1 = 1
+          AND A.DIR_ID = #{dirId}
+          AND B.CD = A.PROC_STAT
+          AND C.CD = A.FILE_TYPE_CD
+            LIMIT #{startLine}
+            , #{maxLine}
+    </select>
+
+    <select id="selectServerInfo" resultType="fsync.business.serverInfo.vo.ServerInfoVO">
+        /* fileSync-SQL.selectServerInfo */
+        SELECT DISTINCT SERVER_ID
+                      , SERVER_TY
+                      , SERVER_NM
+                      , SERVER_IP
+                      , HOST_NM
+                      , (SELECT COUNT(*)
+                         FROM TB_WORK_ORDER W
+                         WHERE PROC_STAT IN ('CN', 'WN')
+                           AND S.SERVER_ID = W.WK_SERVER_ID
+        ) AS SERVER_ORDER_CNT
+        FROM TB_SERVER_INFO S
+    </select>
+
+    <insert id="insertVerificationOrder" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.insertVerificationOrder */
+        INSERT INTO TB_WORK_ORDER
+        (WK_ORD_ID
+        ,WK_ORD_CD
+        ,SOURCE
+        ,TARGET
+        ,WK_SERVER_ID
+        ,PROC_STAT
+        ,PROC_DTM)
+        VALUES
+        <foreach collection="list" item="item" separator=" , ">
+            <if test='item.type == "d"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SIR'
+                ,(SELECT SRC_F_DIR_NM
+                FROM TB_DIR_INFO
+                WHERE DIR_ID = #{item.id})
+                ,NVL((SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND DIR_ID = #{item.id}
+                ),'')
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+            <if test='item.type == "f"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SIR'
+                ,CONCAT((SELECT SRC_F_PATH_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                ,'/'
+                ,(SELECT FILE_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                )
+                ,NVL(
+
+                (SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                ,'/',C.FILE_NM
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B, TB_FILE_INFO C
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND C.DIR_ID = A.DIR_ID
+                AND C.FILE_ID = #{item.id}
+                ),''
+                )
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+        </foreach>
+    </insert>
+
+    <insert id="insertSyncOrder" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.insertSyncOrder */
+        INSERT INTO TB_WORK_ORDER
+        (WK_ORD_ID
+        ,WK_ORD_CD
+        ,SOURCE
+        ,TARGET
+        ,WK_SERVER_ID
+        ,PROC_STAT
+        ,PROC_DTM)
+        VALUES
+        <foreach collection="list" item="item" separator=" , ">
+            <if test='item.type == "d"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SYR'
+                ,(SELECT SRC_F_DIR_NM
+                FROM TB_DIR_INFO
+                WHERE DIR_ID = #{item.id})
+                ,NVL((SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND DIR_ID = #{item.id}
+                ),'')
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+            <if test='item.type == "f"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SYR'
+                ,CONCAT((SELECT SRC_F_PATH_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                ,'/'
+                ,(SELECT FILE_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                )
+                ,NVL(
+
+                (SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                ,'/',C.FILE_NM
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B, TB_FILE_INFO C
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND C.DIR_ID = A.DIR_ID
+                AND C.FILE_ID = #{item.id}
+                ),''
+                )
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+        </foreach>
+    </insert>
+
+    <update id="updateInfo" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.updateInfo */
+        <foreach collection="list" item="item" separator=";">
+            <if test='item.type == "d"'>
+                UPDATE TB_DIR_INFO
+                SET PROC_STAT = 'NO'
+                WHERE DIR_ID = #{item.id}
+            </if>
+            <if test='item.type == "f"'>
+                UPDATE TB_FILE_INFO
+                SET PROC_STAT = 'NO'
+                WHERE FILE_ID = #{item.id}
+            </if>
+        </foreach>
+    </update>
+
+<!--&lt;!&ndash;    (재) 동기화만 다루는 애로 생각&ndash;&gt;
+    <update id="updateInfo" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.updateInfo */
+        <foreach collection="list" item="item" separator=";">
+            <if test='item.type == "d"'>
+                UPDATE TB_DIR_INFO
+                SET PROC_STAT = 'FN'
+                WHERE DIR_ID = #{item.id}
+            </if>
+            <if test='item.type == "f"'>
+                UPDATE TB_FILE_INFO
+                SET PROC_STAT = 'FN'
+                WHERE FILE_ID = #{item.id}
+            </if>
+        </foreach>
+    </update>-->
+
+    <insert id="insertUpdateSync" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.insertUpSync */
+        INSERT INTO TB_WORK_ORDER
+        (WK_ORD_ID
+        ,WK_ORD_CD
+        ,SOURCE
+        ,TARGET
+        ,WK_SERVER_ID
+        ,PROC_STAT
+        ,PROC_DTM)
+        VALUES
+        <foreach collection="list" item="item" separator=" , ">
+            <if test='item.type == "d"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SUR'
+                ,(SELECT SRC_F_DIR_NM
+                FROM TB_DIR_INFO
+                WHERE DIR_ID = #{item.id})
+                ,NVL((SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND DIR_ID = #{item.id}
+                ),'')
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+            <if test='item.type == "f"'>
+                (nextval(SEQ_WORK_ORD_ID)
+                ,'SUR'
+                ,CONCAT((SELECT SRC_F_PATH_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                ,'/'
+                ,(SELECT FILE_NM
+                FROM TB_FILE_INFO
+                WHERE FILE_ID = #{item.id})
+                )
+                ,NVL(
+
+                (SELECT CONCAT(
+                B.DST_TOP_DIR
+                ,SUBSTRING(
+                A.SRC_F_DIR_NM
+                ,LENGTH(NVL(B.SRC_TOP_DIR,0))+1
+                )
+                ,'/',C.FILE_NM
+                )
+                FROM TB_DIR_INFO A, TB_TOP_DIR_INFO B, TB_FILE_INFO C
+                WHERE A.SYNC_ID = B.SYNC_ID
+                AND C.DIR_ID = A.DIR_ID
+                AND C.FILE_ID = #{item.id}
+                ),''
+                )
+                ,#{item.serverId}
+                ,'WN'
+                ,SYSDATE()
+                )
+            </if>
+        </foreach>
+    </insert>
+
+    <update id="updateChangeInfo" parameterType="fsync.business.sync.vo.SyncVO">
+        /* fileSync-SQL.updateInfo */
+        <foreach collection="list" item="item" separator=";">
+            <if test='item.type == "d"'>
+                UPDATE TB_DIR_INFO
+                    SET PROC_STAT = 'FN'
+                WHERE DIR_ID = #{item.id}
+            </if>
+            <if test='item.type == "f"'>
+                UPDATE TB_FILE_INFO
+                    SET PROC_STAT = 'FN'
+                WHERE FILE_ID = #{item.id}
+            </if>
+        </foreach>
+    </update>
+
+</mapper>

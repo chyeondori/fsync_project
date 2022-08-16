@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.schedule.mapper.DirSyncdProsMapper">
+	<!--동기화 파일 수, 파일사이즈 업데이트 대상 목록 조회-->
+	<select id="selDirSyncList" resultType ="fsync.business.schedule.vo.DirSyncProsVO">
+		/* dirSyncPros-SQL.selDirSyncList */
+		WITH RECURSIVE tree2 (ROOT, DIR_ID, SRC_F_DIR_NM, P_DIR_ID, C_DIR_NM, SYNCD_FILE_CNT, SYNCD_FILE_SIZE, FILE_CNT, FILE_SIZE, DEPTH) AS
+						   (
+							   SELECT (@ROWNUM := @ROWNUM + 1) ROOT, E.DIR_ID, E.SRC_F_DIR_NM, E.P_DIR_ID, E.C_DIR_NM, E.SYNCD_FILE_CNT, E.SYNCD_FILE_SIZE, COUNT(F.FILE_SIZE) FILE_CNT, F.FILE_SIZE, 0 depth
+							   FROM	  (SELECT @ROWNUM :=0) tmp
+								  , TB_DIR_INFO E
+										LEFT OUTER JOIN TB_FILE_INFO F ON F.DIR_ID = E.DIR_ID
+								   AND F.FILE_TYPE_CD NOT IN ('LF')
+							   GROUP BY E.DIR_ID
+							   UNION ALL
+							   SELECT tree2.ROOT ROOT, I.DIR_ID, I.SRC_F_DIR_NM, I.P_DIR_ID, I.C_DIR_NM, I.SYNCD_FILE_CNT, I.SYNCD_FILE_SIZE,  I.FILE_CNT, I.FILE_SIZE, tree2.depth+1 depth
+							   FROM   (SELECT H.DIR_ID, H.SRC_F_DIR_NM, H.P_DIR_ID, H.C_DIR_NM, H.SYNCD_FILE_CNT, H.SYNCD_FILE_SIZE, COUNT(G.FILE_SIZE) FILE_CNT, SUM(G.FILE_SIZE) FILE_SIZE
+									   FROM TB_DIR_INFO H
+												LEFT OUTER JOIN TB_FILE_INFO G ON G.DIR_ID = H.DIR_ID
+										   AND G.FILE_TYPE_CD NOT IN ('LF')
+									   GROUP BY H.DIR_ID
+									  ) I
+										  INNER JOIN tree2 ON I.P_DIR_ID = tree2.DIR_ID
+						   )
+
+		SELECT A.DIR_ID
+		     , B.SUM_FILE_SIZE
+		     , B.SUM_FILE_CNT
+		FROM   TB_DIR_INFO A
+			   JOIN (SELECT   DIR_ID
+							, NVL(SUM(FILE_SIZE),0) SUM_FILE_SIZE
+							, NVL(SUM(FILE_CNT),0) SUM_FILE_CNT
+					 FROM     tree2
+					 GROUP BY root) B
+		ON	   A.DIR_ID = B.DIR_ID
+		<![CDATA[
+		AND    (A.SYNCD_FILE_CNT <> B.SUM_FILE_CNT OR A.SYNCD_FILE_SIZE <> B.SUM_FILE_SIZE)
+		]]>
+	</select>
+
+	<update id="updateDirSyncList" parameterType="fsync.business.schedule.vo.DirSyncProsVO">
+		/* dirSyncPros-SQL.updateDirSyncdList */
+		<foreach collection="list" item="vo" index="index" open="" close="" separator=";">
+			UPDATE  TB_DIR_INFO
+			SET     SYNCD_FILE_CNT = #{vo.sumFileCnt}
+				  , SYNCD_FILE_SIZE = #{vo.sumFileSize}
+				  , SMRY_DTM = SYSDATE()
+			WHERE   DIR_ID = #{vo.dirId}
+		</foreach>
+	</update>
+ </mapper>

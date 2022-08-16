@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd">
+	
+	<!-- 스케쥴러 적용 -->
+	<!-- 디렉토리별 동기화 진행률 계산 -->
+	<bean name="schedulSyncdProsJob" class="org.springframework.scheduling.quartz.JobDetailFactoryBean">
+		<property name="jobClass">
+<!--			<value>fsync.common.scheduler.SchedulSyncProsJobExecutor</value>-->
+			<value>fsync.business.schedule.controller.ScheduleSyncProsJobExecutor</value>
+		</property>
+		<!--jobClass에 넘길 데이터에 위에 선언한 Service 세팅 -->
+		<property name="jobDataAsMap">
+			<map>
+				<entry key="dirSyncProsService" value-ref="dirSyncProsServiceImpl"></entry>
+			</map>
+		</property>
+	</bean>
+	<!-- Trigger -->
+	<bean id="schedulTrigger" class="org.springframework.scheduling.quartz.CronTriggerFactoryBean">
+		<property name="jobDetail">
+			<ref bean="schedulSyncdProsJob"/>
+		</property>
+		<property name="cronExpression">
+			<!-- 매 10분마다 실행 TEST 초(0-59),분(0-59),시(0-23),일(1-31),월(1-12),요일(0-6)-->
+			<!-- <value>0 0/10 * * * ?</value>  -->
+			<!-- 매일 5시 실행(진위통계) -->
+			<!--<value>0 0 5 * * ?</value>-->
+			<!-- 매 30분마다 실행 TEST 초(0-59),분(0-59),시(0-23),일(1-31),월(1-12),요일(0-6)-->
+			<value>0 0/30 * * * ?</value>
+		</property>
+	</bean>
+	<!-- scheduler -->
+	<bean class="org.springframework.scheduling.quartz.SchedulerFactoryBean">
+		<property name="triggers">
+			<list>
+ 				<ref bean="schedulTrigger"/>
+			</list>			
+		</property>
+	</bean>
+</beans>

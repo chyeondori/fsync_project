@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.path.mapper.FilePathMapper">
+
+	<select id="topDirList" resultType="fsync.business.path.vo.TopDirInfoVo">
+		SELECT SYNC_ID,
+		       SRC_TOP_DIR,
+		       SRC_TOT_FILE_CNT,
+		       SRC_TOT_FILE_SIZE,
+		       DST_TOP_DIR,
+		       DST_TOT_FILE_CNT,
+		       DST_TOT_FILE_SIZE,
+		       LOG_DIR,
+			   case PROC_STAT
+				   WHEN 'NO' then '미처리'
+			       WHEN 'IN' then '환경구성중'
+			       WHEN 'IO' then '환경구성완료'
+			       WHEN 'IX' then '환경구성중단'
+			       WHEN 'FN' then '동기화중'
+				   WHEN 'FO' then '동기화 완료'
+				   WHEN 'FX' then '동기화중단'
+				   WHEN 'SN' then '동기화검증중'
+				   WHEN 'SO' then '용량검증완료'
+				   WHEN 'SX' then '용량검증중단'
+			       END AS 'PROC_STAT',
+		       REG_DTM,
+		       REMARK
+		FROM TB_TOP_DIR_INFO
+	</select>
+
+	<select id="selectPath" resultType="int" parameterType="fsync.business.path.vo.TopDirInfoVo">
+		SELECT SYNC_ID
+		FROM TB_TOP_DIR_INFO
+		WHERE SYNC_ID = #{syncId}
+	</select>
+
+	<update id="modifyPath" parameterType="fsync.business.path.vo.TopDirInfoVo">
+		UPDATE TB_TOP_DIR_INFO
+		SET SRC_TOP_DIR = #{srcTopDir}, DST_TOP_DIR = #{dstTopDir}, LOG_DIR = #{logDir}, REMARK = #{remark}
+		WHERE SYNC_ID = #{syncId}
+	</update>
+
+	<update id="updatePath" parameterType="fsync.business.path.vo.RegRequestVo">
+		<foreach collection="list" item="item" separator=";">
+			UPDATE TB_TOP_DIR_INFO
+			SET PROC_STAT = "IN"
+			WHERE SYNC_ID = #{item.id}
+		</foreach>
+	</update>
+
+	<!-- 최초 등록 시 DB 업데이트-->
+	<insert id="initRegister" parameterType="fsync.business.path.vo.TopDirInfoVo">
+		INSERT INTO TB_TOP_DIR_INFO(SYNC_ID,SRC_TOP_DIR,DST_TOP_DIR,LOG_DIR,PROC_STAT,REG_DTM,REMARK)
+		VALUES(#{syncId},#{srcTopDir},#{dstTopDir},#{logDir},#{procStat},SYSDATE(),#{remark})
+	</insert>
+
+	<!-- 동기화 경로 중복검사  -->
+	<select id="checkPathDir" parameterType="fsync.business.path.vo.TopDirInfoVo" resultType="java.lang.Integer">
+	SELECT EXISTS(
+					   SELECT *
+					   FROM TB_TOP_DIR_INFO
+					   WHERE SRC_TOP_DIR = #{srcTopDir}
+						 AND DST_TOP_DIR = #{dstTopDir})
+	</select>
+
+	<delete id="delPath" parameterType="java.util.ArrayList" >
+		DELETE
+		FROM TB_TOP_DIR_INFO
+		WHERE SYNC_ID IN (<foreach collection="array" item="item" index="index" separator=",">${item}</foreach>)
+		AND PROC_STAT NOT IN ('FN', 'FX', 'SN', 'SX')
+	</delete>
+
+	<insert id="initStatConf" parameterType="fsync.business.path.vo.RegRequestVo">
+		<foreach collection="list" item="item" separator=";">
+				INSERT INTO TB_WORK_ORDER
+				    (WK_ORD_ID,
+				     SOURCE,
+				     TARGET,
+				     PROC_STAT,
+				     WK_ORD_CD,
+				     WK_SERVER_ID,
+				     LOG_PATH_NM)
+				VALUES
+				    (nextval(SEQ_WORK_ORD_ID),
+				     #{item.srcpath},
+				     #{item.despath},
+				     "WN",
+				     "EVR",
+				     #{item.serverId},
+				     #{item.logpath}
+				     )
+		</foreach>
+	</insert>
+
+
+</mapper>

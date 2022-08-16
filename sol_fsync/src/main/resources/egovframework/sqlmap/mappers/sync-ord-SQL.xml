@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.ord.mapper.SyncOrdMapper">
+
+	<select id="getAgentOrderList" resultType ="fsync.business.ord.vo.SyncOrdVO" >
+		/* SyncOrdMapper.getAgentOrderList */
+		-- 에이전트 작업 조회
+		SELECT DISTINCT
+			qq.WK_ORD_ID,
+			qq.WK_ORD_SEQ,
+			qq.WK_ORD_CD,
+			sr.CD_NM AS WK_ORD_CD_NM,
+			qq.SOURCE,
+			qq.TARGET,
+			sv.SERVER_NM,
+			st.CD_NM AS PROC_STAT,
+			qq.PROC_DTM
+		FROM TB_WORK_ORDER AS qq,
+			 TB_SERVER_INFO sv,
+			 TB_CMMN_CD sr,
+			 TB_CMMN_CD st
+		WHERE qq.WK_SERVER_ID = sv.SERVER_ID AND sr.CD = qq.WK_ORD_CD AND (st.CD = qq.PROC_STAT AND st.GROUP_CD = '4')
+		ORDER BY qq.SOURCE ASC ,qq.TARGET ASC,qq.WK_ORD_ID ASC;
+	</select>
+	<insert id="syncOrdCancel">
+		/* SyncOrdMapper.syncOrdCancel */
+		-- 에이전트 작업 취소
+		INSERT INTO
+			TB_WORK_ORDER(
+			WK_ORD_ID,
+			WK_ORD_SEQ,
+			WK_ORD_CD,
+			LOG_PATH_NM,
+			SOURCE,
+			TARGET,
+			WK_SERVER_ID,
+			PROC_STAT
+		)
+		SELECT
+			b.WK_ORD_ID,
+			b.WK_ORD_SEQ + 1,
+			CONCAT(SUBSTRING(b.WK_ORD_CD, 1, 2), 'C'),
+			b.LOG_PATH_NM,
+			b.SOURCE,
+			b.TARGET,
+			b.WK_SERVER_ID,
+			'CN'
+		FROM TB_WORK_ORDER b,
+			 (
+				 SELECT
+					 a.WK_ORD_ID,
+					 (SELECT WK_ORD_SEQ
+					  FROM TB_WORK_ORDER k
+					  WHERE k.WK_ORD_ID = a.WK_ORD_ID
+					  ORDER BY k.WK_ORD_SEQ DESC
+						 LIMIT 1) AS WK_ORD_SEQ
+				 FROM TB_WORK_ORDER a
+				 WHERE a.WK_ORD_ID = #{wkOrdId}
+				 GROUP BY a.WK_ORD_ID
+			 ) s
+		WHERE b.WK_ORD_ID = s.WK_ORD_ID AND b.WK_ORD_SEQ = s.WK_ORD_SEQ AND (PROC_STAT =  'CN' AND PROC_STAT =  'WN') LIMIT 1;
+	</insert>
+	<select id="getSelectOrdCdList" resultType="fsync.business.ord.vo.SyncOrdVO">
+		SELECT DISTINCT
+			qq.WK_ORD_CD,
+			sr.CD_NM AS WK_ORD_CD_NM
+		FROM TB_WORK_ORDER AS qq,
+			 TB_SERVER_INFO sv,
+			 TB_CMMN_CD sr,
+			 TB_CMMN_CD st
+		WHERE qq.WK_SERVER_ID = sv.SERVER_ID AND sr.CD = qq.WK_ORD_CD AND (st.CD = qq.PROC_STAT AND st.GROUP_CD = '4')
+		  AND sv.SERVER_NM = #{serverNm}
+	</select>
+	<select id="getSelectOrderList" resultType="fsync.business.ord.vo.SyncOrdVO">
+		SELECT DISTINCT
+			qq.WK_ORD_ID,
+			qq.WK_ORD_SEQ,
+			qq.WK_ORD_CD,
+			sr.CD_NM AS WK_ORD_CD_NM,
+			qq.SOURCE,
+			qq.TARGET,
+			sv.SERVER_NM,
+			st.CD_NM AS PROC_STAT,
+			qq.PROC_DTM
+		FROM TB_WORK_ORDER AS qq,
+			TB_SERVER_INFO sv,
+			TB_CMMN_CD sr,
+			TB_CMMN_CD st
+		WHERE qq.WK_SERVER_ID = sv.SERVER_ID AND sr.CD = qq.WK_ORD_CD AND (st.CD = qq.PROC_STAT AND st.GROUP_CD = '4')
+		  AND ((sv.SERVER_NM = #{serverNm} AND #{serverNm} !="all") OR #{serverNm} ="all") AND ((qq.WK_ORD_CD= #{workCd} AND #{workCd} !="all") OR #{workCd} = "all")
+		ORDER BY  qq.SOURCE ASC ,qq.TARGET ASC,qq.WK_ORD_ID ASC;
+	</select>
+	<delete id="syncOrdDelete" parameterType="String">
+		DELETE
+		FROM TB_WORK_ORDER
+		WHERE WK_ORD_ID = #{delId} AND WK_ORD_SEQ = #{seq} AND (PROC_STAT = 'WN' OR PROC_STAT ='CN')
+	</delete>
+</mapper>

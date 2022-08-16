@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.serverInfo.mapper.ServerInfoMapper">
+
+    <select id="selectAllServer" resultType="fsync.business.serverInfo.vo.ServerInfoVO">
+        SELECT DISTINCT SERVER_ID,
+                        SERVER_TY,
+                        SERVER_NM,
+                        SERVER_IP,
+                        HOST_NM,
+                        MAX_JOB_CNT,
+                        (SELECT COUNT(*)
+                         FROM TB_WORK_ORDER W
+                         WHERE PROC_STAT IN ('CN', 'WN')
+                           AND S.SERVER_ID = W.WK_SERVER_ID
+                        ) AS SERVER_ORDER_CNT
+        FROM TB_SERVER_INFO S
+        ORDER BY SERVER_ID ASC
+    </select>
+<!--    CN : 컨텐츠검증중, WN : 미처리-->
+
+    <select id="checkServerNm" parameterType="fsync.business.serverInfo.vo.ServerInfoVO" resultType="java.lang.Integer">
+        SELECT EXISTS(
+            SELECT SERVER_NM FROM TB_SERVER_INFO
+                             WHERE SERVER_NM = LOWER(#{serverNm})
+                               AND SERVER_ID != #{serverId})
+    </select>
+
+    <select id="checkServerIp" parameterType="fsync.business.serverInfo.vo.ServerInfoVO" resultType="java.lang.Integer">
+        SELECT EXISTS(
+            SELECT SERVER_IP FROM TB_SERVER_INFO
+                             WHERE SERVER_IP = #{serverIp}
+                               AND SERVER_ID != #{serverId})
+    </select>
+
+    <insert id="insertServer" parameterType="fsync.business.serverInfo.vo.ServerInfoVO">
+            INSERT INTO TB_SERVER_INFO
+            (
+            SERVER_NM,
+            SERVER_IP,
+            HOST_NM,
+            MAX_JOB_CNT)
+            VALUES (
+            LOWER(#{serverNm}),
+            #{serverIp},
+            #{hostNm},
+            #{maxJobCnt}
+            )
+            ;
+    </insert>
+
+    <update id="updateServer" parameterType="fsync.business.serverInfo.vo.ServerInfoVO">
+        UPDATE TB_SERVER_INFO
+        SET SERVER_NM   = LOWER(#{serverNm})
+          , SERVER_IP   = #{serverIp}
+          , HOST_NM     = #{hostNm}
+          , MAX_JOB_CNT = #{maxJobCnt}
+        WHERE SERVER_ID = #{serverId}
+    </update>
+
+    <delete id="deleteServer" parameterType="java.util.ArrayList" >
+        DELETE
+        FROM TB_SERVER_INFO
+        WHERE SERVER_ID IN
+              (
+                <foreach collection="array" item="item" index="index" separator=",">
+                ${item}
+                </foreach>
+                  )
+    </delete>
+
+</mapper>
+

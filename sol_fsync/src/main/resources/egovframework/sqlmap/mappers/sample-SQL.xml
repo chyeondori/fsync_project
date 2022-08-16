@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fsync.business.sample.mapper.SampleMapper">
+
+    <select id="selSampleList" resultType="fsync.business.sample.vo.SampleVO">
+        /* regist-SQL.selectMobileSvcChk */
+        SELECT *
+        FROM TB_CMMN_GROUP_CD
+        WHERE 1 = 1
+    </select>
+
+    <select id="topDirList" resultType="fsync.business.sync.vo.TopDirInfoVO">
+        SELECT *
+        FROM TB_TOP_DIR_INFO
+    </select>
+
+</mapper>
